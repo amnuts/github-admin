@@ -1,0 +1,96 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - os: macos-latest
+            platform: macos
+            arch: arm64
+          - os: macos-latest
+            platform: macos
+            arch: amd64
+          - os: windows-latest
+            platform: windows
+            arch: amd64
+          - os: ubuntu-latest
+            platform: linux
+            arch: amd64
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+
+      - name: Setup Node
+        uses: actions/setup-node@v6.1.0
+        with:
+          node-version: 22
+
+      - name: Install Wails
+        run: go install github.com/wailsapp/wails/v3/cmd/wails3@latest
+
+      - name: Build
+        run: wails3 build -production
+        env:
+          GOARCH: ${{ matrix.arch }}
+
+      # macOS signing
+      - name: Sign macOS
+        if: matrix.platform == 'macos'
+        env:
+          MACOS_CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE }}
+          MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+        run: |
+          # Import certificate
+          echo $MACOS_CERTIFICATE | base64 --decode > certificate.p12
+          security create-keychain -p "" build.keychain
+          security default-keychain -s build.keychain
+          security unlock-keychain -p "" build.keychain
+          security import certificate.p12 -k build.keychain -P "$MACOS_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "" build.keychain
+
+          # Sign the app bundle
+          wails3 task darwin:sign
+
+      # Create archive
+      - name: Create Archive
+        run: |
+          cd bin
+          if [ "${{ matrix.platform }}" = "windows" ]; then
+            zip -r ../github-admin-${{ github.ref_name }}-${{ matrix.platform }}-${{ matrix.arch }}.zip .
+          else
+            tar -czvf ../github-admin-${{ github.ref_name }}-${{ matrix.platform }}-${{ matrix.arch }}.tar.gz .
+          fi
+        shell: bash
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v6.0.0
+        with:
+          name: github-admin-${{ matrix.platform }}-${{ matrix.arch }}
+          path: github-admin-*
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download Artifacts
+        uses: actions/download-artifact@v6.0.0
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2.5.0
+        with:
+          files: |
+            github-admin-*/github-admin-*

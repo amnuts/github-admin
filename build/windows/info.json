@@ -1,0 +1,15 @@
+{
+	"fixed": {
+		"file_version": "0.0.1"
+	},
+	"info": {
+		"0000": {
+			"ProductVersion": "0.0.1",
+			"CompanyName": "Andrew Collington",
+			"FileDescription": "GitHub Admin Application",
+			"LegalCopyright": "© 2026, Andrew Collington",
+			"ProductName": "github-admin",
+			"Comments": "Help manage some GitHub repos"
+		}
+	}
+}
